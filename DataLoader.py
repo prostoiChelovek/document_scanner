@@ -2,40 +2,43 @@ from typing import Optional
 
 import cv2 as cv
 
-from pdf2image import convert_from_path
 import tempfile
 
 import numpy as np
 
+try:
+    from pdf2image import convert_from_path
 
-class TestPdfLoader:
-    def __init__(self, path: str, rotate: Optional[int] = None,
-                 *args, **kwargs):
-        self.rotate: Optional[int] = rotate
+    class TestPdfLoader:
+        def __init__(self, path: str, rotate: Optional[int] = None,
+                     *args, **kwargs):
+            self.rotate: Optional[int] = rotate
 
-        kwargs["paths_only"] = True
-        kwargs["fmt"] = "png"
+            kwargs["paths_only"] = True
+            kwargs["fmt"] = "png"
 
-        self._temp_directory = tempfile.TemporaryDirectory()
-        kwargs["output_folder"] = self._temp_directory.name
+            self._temp_directory = tempfile.TemporaryDirectory()
+            kwargs["output_folder"] = self._temp_directory.name
 
-        self._pdf = convert_from_path(path, *args, **kwargs)
+            self._pdf = convert_from_path(path, *args, **kwargs)
 
-    def __del__(self):
-        self._temp_directory.cleanup()
+        def __del__(self):
+            self._temp_directory.cleanup()
 
-    def __iter__(self):
-        return self
+        def __iter__(self):
+            return self
 
-    def __next__(self) -> np.array:
-        for img_path in self._pdf:
-            img = cv.imread(img_path)
-            if self.rotate:
-                img = cv.rotate(img, self.rotate)
+        def __next__(self) -> np.array:
+            for img_path in self._pdf:
+                img = cv.imread(img_path)
+                if self.rotate:
+                    img = cv.rotate(img, self.rotate)
 
-            return img
+                return img
 
-        raise StopIteration()
+            raise StopIteration()
+except ModuleNotFoundError:
+    pass
 
 
 class TestImagesLoader:
