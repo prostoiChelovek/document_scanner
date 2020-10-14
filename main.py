@@ -74,7 +74,8 @@ def get_lines(contours):
 
 
 def sort_lines(lines):
-    return sorted(lines, key=lambda line: get_distance((0, 0), line[0]))
+    res = sorted(lines, key=lambda line: get_distance((0, 0), line[0]))
+    return [sorted(line, key=lambda point: get_distance((0, 0), point)) for line in res]
 
 
 def is_point_in_box(pt, box):
@@ -99,11 +100,15 @@ def get_box_area(box):
     return abs(x2 - x1) * abs(y2 - y1)
 
 
+def is_line_horizontal(line):
+    x_distance, y_distance = [abs(line[0][i] - line[1][i]) for i in range(2)]
+    return x_distance >= y_distance
+
+
 def get_wide_bound_of_line(line, box_margin, img_size):
     a, b = line
 
-    x_distance, y_distance = [abs(a[i] - b[i]) for i in range(2)]
-    if x_distance >= y_distance:  # horizontal
+    if is_line_horizontal(line):  # horizontal
         a, b = sorted(line, key=lambda pt: pt[1])
         y1 = a[1] - box_margin
         y2 = b[1] + box_margin
@@ -115,12 +120,19 @@ def get_wide_bound_of_line(line, box_margin, img_size):
         return ((x1, 0), (x2, img_size[1])), False
 
 
-def find_collinear(img_size, lines):
+def get_triangle_area(a, b, c):
+    # https://www.mathopenref.com/coordtrianglearea.html
+
+    return abs((a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1])) / 2)
+
+
+def find_collinear(img, img_size, lines):
     lines = sort_lines(lines)
 
     box_margin = 10
 
     res = []
+    img_draw = img.copy()
 
     while len(lines) > 0:
         line = lines[0]
@@ -131,11 +143,29 @@ def find_collinear(img_size, lines):
 
         matches = [line]
         for line_b in lines[:]:
-            box_b, is_horizontal_b = get_wide_bound_of_line(line_b, box_margin, img_size)
-            if is_line_in_box(line_b, box) or is_line_in_box(line, box_b):
-                if is_horizontal == is_horizontal_b and get_overlap_area(box, box_b) > get_box_area(box) // 3:
-                    matches.append(line_b)
-                    lines.remove(line_b)
+            area = get_triangle_area(line[0], line[1], line_b[0])
+            line_lens = [get_line_length(l) for l in [line, line_b]]
+            ratio = max(line_lens) / min(line_lens)
+            max_area = (min(line_lens) + (max(line_lens) / (ratio / 2))) / 2
+            if area <= max_area and (is_line_horizontal(line) == is_line_horizontal(line_b)):
+                matches.append(line_b)
+                lines.remove(line_b)
+                print("matched")
+
+            #if len(res) < 7 or not (is_line_horizontal(line) == is_line_horizontal(line_b)):
+            #    continue
+
+            print(area, max_area, ratio, max(line_lens) / (ratio / 2))
+
+            cv2.line(img_draw, *line, (255, 0, 0), 2)
+            cv2.line(img_draw, *line_b, (0, 0, 255), 2)
+            triangle = [line[0], line[1], line_b[0]]
+            for i in range(3):
+                a, b = triangle[i], triangle[(i + 1) % 3]
+                cv2.line(img_draw, a, b, (0, 255, 0))
+            #cv2.imshow("triangle", img_draw)
+            #cv2.waitKey(0)
+            img_draw = img.copy()
 
         res.append(matches)
 
@@ -151,8 +181,9 @@ def doStuff(img):
 
     cnts = find_contours(edges)
     lines = get_lines(cnts)
-    collinear = find_collinear(gray.shape[::-1], lines)
+    collinear = find_collinear(img, gray.shape[::-1], lines)
 
+    i = 0
     for lines in collinear:
         img_draw = img#.copy()
 
@@ -163,6 +194,8 @@ def doStuff(img):
             # cv2.rectangle(img_draw, box[0], box[1], (0, 0, 125))
 
             cv2.line(img_draw, line[0], line[1], color, 2)
+            cv2.putText(img_draw, str(i), (line[0][0], line[0][1]), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (255, 0, 255))
+        i += 1
 
         cv2.imshow("test", img_draw)
         # cv2.imshow("test", cv2.resize(img_draw, (img.shape[1] * 3, img.shape[0] * 3)))
