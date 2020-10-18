@@ -64,11 +64,10 @@ def get_triangle_area(a: Point, b: Point, c: Point) -> float:
     return abs((a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y)) / 2)
 
 
-def group_lines(img, lines: List[Line]) -> List[List[Line]]:
+def group_lines(lines: List[Line]) -> List[List[Line]]:
     lines = sort_lines(lines)
 
     res = []
-    img_draw = img.copy()
 
     while len(lines) > 0:
         line = lines[0]
@@ -84,22 +83,6 @@ def group_lines(img, lines: List[Line]) -> List[List[Line]]:
             if area <= max_area and (line.horizontal == line_b.horizontal):
                 matches.append(line_b)
                 lines.remove(line_b)
-                # print("matched")
-
-            #if len(res) < 7 or not (is_line_horizontal(line) == is_line_horizontal(line_b)):
-            #    continue
-
-            # print(area, max_area, ratio, max(line_lens) / (ratio / 2))
-
-            cv2.line(img_draw, *tuple(line), (255, 0, 0), 2)
-            cv2.line(img_draw, *tuple(line_b), (0, 0, 255), 2)
-            triangle = [line.a, line.b, line_b.a]
-            for i in range(3):
-                a, b = triangle[i], triangle[(i + 1) % 3]
-                cv2.line(img_draw, tuple(a), tuple(b), (0, 255, 0))
-            #cv2.imshow("triangle", img_draw)
-            #cv2.waitKey(0)
-            img_draw = img.copy()
 
         res.append(matches)
 
@@ -115,7 +98,7 @@ def doStuff(img):
 
     cnts = find_contours(edges)
     lines = get_lines(cnts)
-    collinear = group_lines(img, lines)
+    collinear = group_lines(lines)
 
     i = 0
     for lines in collinear:
