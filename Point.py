@@ -25,6 +25,12 @@ class Point:
 
         return Point(op(self.x, other_pt.x), op(self.y, other_pt.y))
 
+    @classmethod
+    def from_list(cls, arr):
+        assert len(arr) == 2, "List should have two elements (x, y)"
+
+        return Point(*arr)
+
     def __lt__(self, other):
         return self._compare(other, lambda a, b: a < b)
 
@@ -63,4 +69,4 @@ class Point:
 
     def __iter__(self):
         for val in [self.x, self.y]:
-            yield val
+            yield int(val)

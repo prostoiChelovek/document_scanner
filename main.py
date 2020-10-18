@@ -1,11 +1,14 @@
 import math
 import sys
 import random
+from typing import List
 
 import cv2 as cv2
 import numpy as np
 
 from DataLoader import TestImagesLoader
+from Point import Point
+from Line import Line
 
 
 def _find_contours_with_kernel(img, kernel):
@@ -30,106 +33,39 @@ def find_contours(img):
     return horizontal + vertical
 
 
-def get_distance(a, b):
-    return math.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2)
-
-
-def get_line_length(line):
-    return get_distance(line[0], line[1])
-
-
-def get_line_midpoint(line):
-    a, b = line
-    return (int(a[0] + b[0]) // 2), int((a[1] + b[1]) // 2)
-
-
-def get_line_slope(line):
-    a, b = line[0], line[1]
-    try:
-        return (b[1] - a[1]) / (b[0] - a[0])
-    except ZeroDivisionError:
-        return math.inf
-
-
-def get_centerline(box):
+def get_centerline(box) -> Line:
     pts = cv2.boxPoints(box)
 
-    box_lines = [(pts[i], pts[(i + 1) % len(pts)]) for i in range(len(pts))]
+    box_lines = [Line(Point.from_list(pts[i]), Point.from_list(pts[(i + 1) % len(pts)]))
+                 for i in range(len(pts))]
     bottom, right, top, left = box_lines
 
-    if get_line_length(left) < get_line_length(top):
+    if left.length < top.length:
         lines = (left, right)
     else:
         lines = (top, bottom)
 
-    return tuple([get_line_midpoint(x) for x in lines])
+    return Line(*(x.midpoint for x in lines))
 
 
-def get_lines(contours):
+def get_lines(contours) -> List[Line]:
     boxes = [cv2.minAreaRect(contour) for contour in contours]
 
-    centerlines = [get_centerline(box) for box in boxes]
-
-    return centerlines
+    return [get_centerline(box) for box in boxes]
 
 
-def sort_lines(lines):
-    res = sorted(lines, key=lambda line: get_distance((0, 0), line[0]))
-    return [sorted(line, key=lambda point: get_distance((0, 0), point)) for line in res]
+def sort_lines(lines: List[Line]) -> List[Line]:
+    return sorted(lines, key=lambda line: line.a.get_distance(Point(0, 0)))
 
 
-def is_point_in_box(pt, box):
-    a, b = box
-    return (a[0] < pt[0] < b[0]) and (a[1] < pt[1] < b[1])
-
-
-def is_line_in_box(line, box):
-    return all(is_point_in_box(pt, box) for pt in line)
-
-
-def get_overlap_area(box_a, box_b):
-    # https://stackoverflow.com/questions/9324339/how-much-do-two-rectangles-overlap/9325084
-
-    (ax1, ay1), (ax2, ay2) = box_a
-    (bx1, by1), (bx2, by2) = box_b
-    return max(0, min(bx2, ax2) - max(bx1, ax1)) * max(0, min(by2, ay2) - max(by1, ay1))
-
-
-def get_box_area(box):
-    (x1, y1), (x2, y2) = box
-    return abs(x2 - x1) * abs(y2 - y1)
-
-
-def is_line_horizontal(line):
-    x_distance, y_distance = [abs(line[0][i] - line[1][i]) for i in range(2)]
-    return x_distance >= y_distance
-
-
-def get_wide_bound_of_line(line, box_margin, img_size):
-    a, b = line
-
-    if is_line_horizontal(line):  # horizontal
-        a, b = sorted(line, key=lambda pt: pt[1])
-        y1 = a[1] - box_margin
-        y2 = b[1] + box_margin
-        return ((0, y1), (img_size[0], y2)), True
-    else:  # vertical
-        a, b = sorted(line, key=lambda pt: pt[0])
-        x1 = a[0] - box_margin
-        x2 = b[0] + box_margin
-        return ((x1, 0), (x2, img_size[1])), False
-
-
-def get_triangle_area(a, b, c):
+def get_triangle_area(a: Point, b: Point, c: Point) -> float:
     # https://www.mathopenref.com/coordtrianglearea.html
 
-    return abs((a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1])) / 2)
+    return abs((a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y)) / 2)
 
 
-def find_collinear(img, img_size, lines):
+def group_lines(img, lines: List[Line]) -> List[List[Line]]:
     lines = sort_lines(lines)
-
-    box_margin = 10
 
     res = []
     img_draw = img.copy()
@@ -137,32 +73,30 @@ def find_collinear(img, img_size, lines):
     while len(lines) > 0:
         line = lines[0]
 
-        box, is_horizontal = get_wide_bound_of_line(line, box_margin, img_size)
-
         lines.remove(line)
 
         matches = [line]
         for line_b in lines[:]:
-            area = get_triangle_area(line[0], line[1], line_b[0])
-            line_lens = [get_line_length(l) for l in [line, line_b]]
+            area = get_triangle_area(line.a, line.b, line_b.a)
+            line_lens = [l.length for l in [line, line_b]]
             ratio = max(line_lens) / min(line_lens)
             max_area = (min(line_lens) + (max(line_lens) / (ratio / 2))) / 2
-            if area <= max_area and (is_line_horizontal(line) == is_line_horizontal(line_b)):
+            if area <= max_area and (line.horizontal == line_b.horizontal):
                 matches.append(line_b)
                 lines.remove(line_b)
-                print("matched")
+                # print("matched")
 
             #if len(res) < 7 or not (is_line_horizontal(line) == is_line_horizontal(line_b)):
             #    continue
 
-            print(area, max_area, ratio, max(line_lens) / (ratio / 2))
+            # print(area, max_area, ratio, max(line_lens) / (ratio / 2))
 
-            cv2.line(img_draw, *line, (255, 0, 0), 2)
-            cv2.line(img_draw, *line_b, (0, 0, 255), 2)
-            triangle = [line[0], line[1], line_b[0]]
+            cv2.line(img_draw, *tuple(line), (255, 0, 0), 2)
+            cv2.line(img_draw, *tuple(line_b), (0, 0, 255), 2)
+            triangle = [line.a, line.b, line_b.a]
             for i in range(3):
                 a, b = triangle[i], triangle[(i + 1) % 3]
-                cv2.line(img_draw, a, b, (0, 255, 0))
+                cv2.line(img_draw, tuple(a), tuple(b), (0, 255, 0))
             #cv2.imshow("triangle", img_draw)
             #cv2.waitKey(0)
             img_draw = img.copy()
@@ -181,7 +115,7 @@ def doStuff(img):
 
     cnts = find_contours(edges)
     lines = get_lines(cnts)
-    collinear = find_collinear(img, gray.shape[::-1], lines)
+    collinear = group_lines(img, lines)
 
     i = 0
     for lines in collinear:
@@ -189,12 +123,8 @@ def doStuff(img):
 
         color = tuple(random.randint(0, 255) for i in range(3))
         for line in lines:
-            box, is_horizontal = get_wide_bound_of_line(line, 10, gray.shape[::-1])
-
-            # cv2.rectangle(img_draw, box[0], box[1], (0, 0, 125))
-
-            cv2.line(img_draw, line[0], line[1], color, 2)
-            cv2.putText(img_draw, str(i), (line[0][0], line[0][1]), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (255, 0, 255))
+            cv2.line(img_draw, *tuple(line), color, 2)
+            cv2.putText(img_draw, str(i), tuple(line.a), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (255, 0, 255))
         i += 1
 
         cv2.imshow("test", img_draw)
@@ -214,5 +144,5 @@ for img in loader:
         if k == 27:
             sys.exit(0)
         elif k == 32:
-            continue
+            # continue
             break

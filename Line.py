@@ -28,15 +28,22 @@ class Line:
 
         self._sort_points()
 
+    @property
+    def horizontal(self) -> bool:
+        distance = self._a - self._b
+        return distance.x >= distance.y
+
+    @property
+    def length(self) -> float:
+        return self._a.get_distance(self._b)
+
+    @property
+    def midpoint(self) -> Point:
+        return (self._a + self._b) // 2
+
     def _sort_points(self) -> None:
         self._a, self._b = sorted([self._a, self._b], key=lambda pt: pt.get_distance(Point(0, 0)))
 
-    def get_midpoint(self) -> Point:
-        return (self._a + self._b) // 2
-
-    def get_length(self) -> float:
-        return self._a.get_distance(self._b)
-
     def __iter__(self):
         for pt in [self._a, self._b]:
-            yield pt
+            yield tuple(pt)
