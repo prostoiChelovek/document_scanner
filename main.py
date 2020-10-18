@@ -76,6 +76,8 @@ def group_lines(lines: List[Line]) -> List[List[Line]]:
 
         matches = [line]
         for line_b in lines[:]:
+            # TODO: maybe it'll be better to use angles instead
+
             area = get_triangle_area(line.a, line.b, line_b.a)
             line_lens = [l.length for l in [line, line_b]]
             ratio = max(line_lens) / min(line_lens)
@@ -89,6 +91,20 @@ def group_lines(lines: List[Line]) -> List[List[Line]]:
     return res
 
 
+def get_group_guide(lines: List[Line]) -> Line:
+    points = []
+    for line in lines:
+        for pt in line:
+            points.append(np.int32(np.int32(tuple(pt))))
+
+    bounding_rect = cv2.minAreaRect(np.array(points))
+    return get_centerline(bounding_rect)
+
+
+def get_guides(lines: List[List[Line]]) -> List[Line]:
+    return [get_group_guide(group) for group in lines]
+
+
 def doStuff(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -98,17 +114,14 @@ def doStuff(img):
 
     cnts = find_contours(edges)
     lines = get_lines(cnts)
-    collinear = group_lines(lines)
+    grouped = group_lines(lines)
+    guides = get_guides(grouped)
 
-    i = 0
-    for lines in collinear:
+    for guide in guides:
         img_draw = img#.copy()
 
         color = tuple(random.randint(0, 255) for i in range(3))
-        for line in lines:
-            cv2.line(img_draw, *tuple(line), color, 2)
-            cv2.putText(img_draw, str(i), tuple(line.a), cv2.FONT_HERSHEY_COMPLEX_SMALL, 1, (255, 0, 255))
-        i += 1
+        cv2.line(img_draw, *tuple(guide), color, 2)
 
         cv2.imshow("test", img_draw)
         # cv2.imshow("test", cv2.resize(img_draw, (img.shape[1] * 3, img.shape[0] * 3)))
