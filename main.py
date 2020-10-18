@@ -82,7 +82,9 @@ def group_lines(lines: List[Line]) -> List[List[Line]]:
             line_lens = [l.length for l in [line, line_b]]
             ratio = max(line_lens) / min(line_lens)
             max_area = (min(line_lens) + (max(line_lens) / (ratio / 2))) / 2
-            if area <= max_area and (line.horizontal == line_b.horizontal):
+            max_distance = max(line_lens) / 2
+            if area <= max_area and (line.horizontal == line_b.horizontal) \
+                    and line.b.get_distance(line_b.a) < max_distance:
                 matches.append(line_b)
                 lines.remove(line_b)
 
