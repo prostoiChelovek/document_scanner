@@ -70,3 +70,9 @@ class Point:
     def __iter__(self):
         for val in [self.x, self.y]:
             yield int(val)
+
+    def __str__(self):
+        return str(tuple(self))
+
+    def __repr__(self):
+        return str(self)

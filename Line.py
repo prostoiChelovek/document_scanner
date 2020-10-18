@@ -47,3 +47,9 @@ class Line:
     def __iter__(self):
         for pt in [self._a, self._b]:
             yield tuple(pt)
+
+    def __str__(self):
+        return str(tuple(self))
+
+    def __repr__(self):
+        return str(self)

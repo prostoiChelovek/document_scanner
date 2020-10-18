@@ -1,7 +1,7 @@
 import math
 import sys
 import random
-from typing import List
+from typing import List, Tuple, Optional
 
 import cv2 as cv2
 import numpy as np
@@ -65,8 +65,6 @@ def get_triangle_area(a: Point, b: Point, c: Point) -> float:
 
 
 def group_lines(lines: List[Line]) -> List[List[Line]]:
-    lines = sort_lines(lines)
-
     res = []
 
     while len(lines) > 0:
@@ -77,6 +75,7 @@ def group_lines(lines: List[Line]) -> List[List[Line]]:
         matches = [line]
         for line_b in lines[:]:
             # TODO: maybe it'll be better to use angles instead
+            # TODO: fix fails on some close vertical lines
 
             area = get_triangle_area(line.a, line.b, line_b.a)
             line_lens = [l.length for l in [line, line_b]]
@@ -107,6 +106,64 @@ def get_guides(lines: List[List[Line]]) -> List[Line]:
     return [get_group_guide(group) for group in lines]
 
 
+def get_point_line_distance(line: Line, point: Point) -> float:
+    # http://paulbourke.net/geometry/pointlineplane/
+
+    u = sum((point - line.a) * (line.b - line.a)) / (np.linalg.norm(tuple(line.b - line.a)) ** 2)
+    pt = line.a + (line.b - line.a) * u
+    return pt.get_distance(point)
+
+
+def find_table_outline(img, lines: List[Line]) -> Optional[Tuple[Line, Line, Line, Line]]:
+    distance_weight = 3
+    length_weight = 0.4
+
+    pair_score_fn = lambda line_a, line_b: ((get_point_line_distance(line_a, line_b.a) * distance_weight)
+                                            + (line_b.length * length_weight)) \
+                                           if line_a.horizontal == line_b.horizontal else -1
+
+    outline: List[Line] = []
+    for horizontal in [False, True]:
+        lines = sorted(lines, key=lambda l: l.a.x if horizontal else l.a.y)
+
+        best_candidate: Optional[Tuple[Line, Line]] = None
+        for i, line_a in enumerate(lines[:-1]):
+            if line_a.horizontal != horizontal:
+                continue
+
+            pair = line_a, max(lines[i + 1:], key=lambda line_b: pair_score_fn(line_a, line_b)) \
+                if i != len(lines) - 1 else lines[i+1]
+
+            if best_candidate is None:
+                best_candidate = pair
+            elif line_a.horizontal == pair[1].horizontal:
+                print(best_candidate, pair, max([best_candidate, pair],
+                                     key=lambda c: pair_score_fn(*c) + c[0].length * length_weight),
+                      pair_score_fn(*pair) + pair[0].length * length_weight, sep="\t")
+
+                img_draw = img.copy()
+                cv2.line(img_draw, *tuple(best_candidate[0]), (255, 0, 0))
+                cv2.line(img_draw, *tuple(best_candidate[1]), (0, 255, 0))
+                cv2.line(img_draw, tuple(best_candidate[0].midpoint), tuple(best_candidate[1].midpoint), (0, 255, 0), 2)
+
+                best_candidate = max([best_candidate, pair],
+                                     key=lambda c: pair_score_fn(*c) + c[0].length * length_weight)
+
+                cv2.line(img_draw, *tuple(pair[0]), (0, 0, 255), 2)
+                cv2.line(img_draw, *tuple(pair[1]), (255, 0, 255), 2)
+                cv2.line(img_draw, tuple(pair[0].midpoint), tuple(pair[1].midpoint), (0, 0, 255), 2)
+
+                cv2.imshow("candidates", img_draw)
+                while cv2.waitKey(0) != 32: continue
+
+        if best_candidate is not None:
+            outline += list(best_candidate)
+        else:
+            return None
+
+    return tuple(outline)
+
+
 def doStuff(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -116,10 +173,12 @@ def doStuff(img):
 
     cnts = find_contours(edges)
     lines = get_lines(cnts)
+    lines = sort_lines(lines)
     grouped = group_lines(lines)
     guides = get_guides(grouped)
+    table_outline = find_table_outline(img, guides)
 
-    for guide in guides:
+    for guide in table_outline:
         img_draw = img#.copy()
 
         color = tuple(random.randint(0, 255) for i in range(3))
@@ -127,7 +186,7 @@ def doStuff(img):
 
         cv2.imshow("test", img_draw)
         # cv2.imshow("test", cv2.resize(img_draw, (img.shape[1] * 3, img.shape[0] * 3)))
-        cv2.imshow("edges", edges)
+        # cv2.imshow("edges", edges)
         # while cv2.waitKey(0) != 32: continue
 
 
