@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Callable, Union
 
 
@@ -7,6 +8,9 @@ class Point:
     def __init__(self, x: int, y: int):
         self.x = x
         self.y = y
+
+    def get_distance(self, b: Point) -> float:
+        return math.sqrt(sum((b - self) ** 2))
 
     def _compare(self, other: Union[Point, int], op: Callable[[int, int], bool],
                  logic_op: Callable[[bool, bool], bool] = None) -> bool:
@@ -53,6 +57,9 @@ class Point:
 
     def __floordiv__(self, other):
         return self._perform_op(other, lambda a, b: a // b)
+
+    def __pow__(self, power):
+        return self._perform_op(power, lambda a, b: a ** b)
 
     def __iter__(self):
         for val in [self.x, self.y]:
