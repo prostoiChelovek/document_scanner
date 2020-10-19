@@ -31,7 +31,7 @@ class Line:
     @property
     def horizontal(self) -> bool:
         distance = self._a - self._b
-        return distance.x >= distance.y
+        return distance.x <= distance.y
 
     @property
     def length(self) -> float:
