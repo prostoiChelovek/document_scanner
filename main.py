@@ -36,8 +36,9 @@ def find_contours(img):
 def get_centerline(box) -> Line:
     pts = cv2.boxPoints(box)
 
-    box_lines = [Line(Point.from_list(pts[i]), Point.from_list(pts[(i + 1) % len(pts)]))
-                 for i in range(len(pts))]
+    box_lines = [
+        Line(Point.from_list(pts[i]), Point.from_list(pts[(i + 1) % len(pts)]))
+        for i in range(len(pts))]
     bottom, right, top, left = box_lines
 
     if left.length < top.length:
@@ -109,19 +110,41 @@ def get_guides(lines: List[List[Line]]) -> List[Line]:
 def get_point_line_distance(line: Line, point: Point) -> float:
     # http://paulbourke.net/geometry/pointlineplane/
 
-    u = sum((point - line.a) * (line.b - line.a)) / (np.linalg.norm(tuple(line.b - line.a)) ** 2)
+    u = sum((point - line.a) * (line.b - line.a)) / (
+                np.linalg.norm(tuple(line.b - line.a)) ** 2)
     pt = line.a + (line.b - line.a) * u
     return pt.get_distance(point)
 
 
-def find_table_outline(img, lines: List[Line]) -> Optional[Tuple[Line, Line, Line, Line]]:
+def _get_pair_score(line_a: Line, line_b: Line) -> float:
     distance_weight = 2
-    length_weight = 1
+
+    if line_a.horizontal != line_b.horizontal:
+        return -1
+
+    distance_score = get_point_line_distance(line_a, line_b.a) * distance_weight
+    length_score = line_b.length
+
+    return distance_score + length_score
+
+
+def _get_outline_distance(line: Line, outline: List[Line],
+                          horizontal: bool) -> float:
     lower_to_right_weight = 30
 
-    pair_score_fn = lambda line_a, line_b: ((get_point_line_distance(line_a, line_b.a) * distance_weight)
-                                            + (line_b.length * length_weight)) \
-                                           if line_a.horizontal == line_b.horizontal else -1
+    if not horizontal:
+        return 0
+
+    return line.a.get_distance(outline[0].b) * lower_to_right_weight
+
+
+def find_table_outline(
+        lines: List[Line]) -> Optional[Tuple[Line, Line, Line, Line]]:
+
+    pair_score_fn = lambda line_b: _get_pair_score(line_a, line_b) \
+                                   - _get_outline_distance(line_b, outline,
+                                                           horizontal)
+    candidate_score_fn = lambda c: _get_pair_score(*c) + c[0].length
 
     outline: List[Line] = []
     for horizontal in [False, True]:
@@ -132,33 +155,14 @@ def find_table_outline(img, lines: List[Line]) -> Optional[Tuple[Line, Line, Lin
             if line_a.horizontal != horizontal:
                 continue
 
-            pair = line_a, max(lines[i + 1:],
-                               key=lambda line_b: pair_score_fn(line_a, line_b) - (line_b.a.get_distance(outline[0].b) * lower_to_right_weight if horizontal else 0)) \
-                if i != len(lines) - 1 else lines[i+1]
-            print(pair_score_fn(line_a, pair[1]) - (pair[1].a.get_distance(outline[0].b) * lower_to_right_weight if horizontal else 0),
-                  pair[1].a.get_distance(outline[0].b) * lower_to_right_weight if horizontal else 0
-                  )
+            pair = line_a, max(lines[i + 1:], key=pair_score_fn) \
+                if i != len(lines) - 1 else lines[i + 1]
 
             if best_candidate is None:
                 best_candidate = pair
             elif line_a.horizontal == pair[1].horizontal:
-                img_draw = img.copy()
-                cv2.line(img_draw, *tuple(best_candidate[0]), (255, 0, 0))
-                cv2.line(img_draw, *tuple(best_candidate[1]), (0, 255, 0))
-                cv2.line(img_draw, tuple(best_candidate[0].midpoint), tuple(best_candidate[1].midpoint), (0, 255, 0), 2)
-
                 best_candidate = max([best_candidate, pair],
-                                     key=lambda c: pair_score_fn(*c) + c[0].length * length_weight)
-
-                cv2.line(img_draw, *tuple(pair[0]), (0, 0, 255), 2)
-                cv2.line(img_draw, *tuple(pair[1]), (255, 0, 255), 2)
-                cv2.line(img_draw, tuple(pair[0].midpoint), tuple(pair[1].midpoint), (0, 0, 255), 2)
-                if horizontal:
-                    cv2.line(img_draw, *tuple(outline[0]), (125, 125, 255), 2)
-                    cv2.circle(img_draw, tuple(pair[1].a), 5, (125, 125, 255), cv2.FILLED)
-
-                cv2.imshow("candidates", img_draw)
-                #while cv2.waitKey(0) != 32: continue
+                                     key=candidate_score_fn)
 
         if best_candidate is not None:
             outline += list(best_candidate)
@@ -180,10 +184,10 @@ def doStuff(img):
     lines = sort_lines(lines)
     grouped = group_lines(lines)
     guides = get_guides(grouped)
-    table_outline = find_table_outline(img, guides)
+    table_outline = find_table_outline(guides)
 
     for guide in table_outline:
-        img_draw = img#.copy()
+        img_draw = img  # .copy()
 
         color = tuple(random.randint(0, 255) for i in range(3))
         cv2.line(img_draw, *tuple(guide), color, 3)
