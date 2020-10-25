@@ -74,19 +74,18 @@ def group_lines(lines: List[Line]) -> List[List[Line]]:
         lines.remove(line)
 
         matches = [line]
+        line_a = line
         for line_b in lines[:]:
-            # TODO: maybe it'll be better to use angles instead
-            # TODO: fix fails on some close vertical lines
-
-            area = get_triangle_area(line.a, line.b, line_b.a)
-            line_lens = [l.length for l in [line, line_b]]
+            area = get_triangle_area(line_a.a, line_a.b, line_b.a)
+            line_lens = [l.length for l in [line_a, line_b]]
             ratio = max(line_lens) / min(line_lens)
             max_area = (min(line_lens) + (max(line_lens) / (ratio / 2))) / 2
             max_distance = max(line_lens) / 2
-            if area <= max_area and (line.horizontal == line_b.horizontal) \
-                    and line.b.get_distance(line_b.a) < max_distance:
+            if area <= max_area and (line_a.horizontal == line_b.horizontal) \
+                    and line_a.b.get_distance(line_b.a) < max_distance:
                 matches.append(line_b)
                 lines.remove(line_b)
+                line_a = line_b
 
         res.append(matches)
 
