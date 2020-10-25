@@ -10,6 +10,8 @@ from DataLoader import TestImagesLoader
 from Point import Point
 from Line import Line
 
+table_outline_type = Tuple[Line, Line, Line, Line]
+
 
 def _find_contours_with_kernel(img, kernel):
     morphed = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel, iterations=1)
@@ -138,8 +140,7 @@ def _get_outline_distance(line: Line, outline: List[Line],
 
 
 def find_table_outline(
-        lines: List[Line]) -> Optional[Tuple[Line, Line, Line, Line]]:
-
+        lines: List[Line]) -> Optional[table_outline_type]:
     pair_score_fn = lambda line_b: _get_pair_score(line_a, line_b) \
                                    - _get_outline_distance(line_b, outline,
                                                            horizontal)
@@ -171,6 +172,23 @@ def find_table_outline(
     return tuple(outline)
 
 
+def close_table_outline(outline: table_outline_type,
+                        img_size: Tuple[int, int]) -> table_outline_type:
+    intersections = []
+    for i, line_a in enumerate(outline[:2]):
+        for line_b in outline[i+1:]:
+            intersection = line_a.intersection(line_b)
+            if all(0 <= c <= s for c, s in zip(intersection, img_size)):
+                intersections.append(intersection)
+
+    assert len(intersections) == 4
+
+    intersections[2], intersections[3] = intersections[3], intersections[2]
+
+    return tuple(Line(intersections[i], intersections[(i + 1) % 4])
+                 for i in range(4))
+
+
 def doStuff(img):
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (5, 5), 0)
@@ -184,6 +202,7 @@ def doStuff(img):
     grouped = group_lines(lines)
     guides = get_guides(grouped)
     table_outline = find_table_outline(guides)
+    table_outline = close_table_outline(table_outline, gray.shape[1::-1])
 
     for guide in table_outline:
         img_draw = img  # .copy()

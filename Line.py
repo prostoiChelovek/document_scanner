@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from Point import Point
 
 
@@ -40,6 +42,24 @@ class Line:
     @property
     def midpoint(self) -> Point:
         return (self._a + self._b) // 2
+
+    def intersection(self, line2: Line) -> Point:
+        # https://stackoverflow.com/a/20677983/9577873
+
+        xdiff = (self.a.x - self.b.x, line2.a.x - line2.b.x)
+        ydiff = (self.a.y - self.b.y, line2.a.y - line2.b.y)
+
+        def det(a, b):
+            return a[0] * b[1] - a[1] * b[0]
+
+        div = det(xdiff, ydiff)
+        if div == 0:
+            return Point(-1, -1)
+
+        d = (det(*self), det(*line2))
+        x = det(d, xdiff) / div
+        y = det(d, ydiff) / div
+        return Point(x, y)
 
     def _sort_points(self) -> None:
         self._a, self._b = sorted([self._a, self._b], key=lambda pt: pt.get_distance(Point(0, 0)))
