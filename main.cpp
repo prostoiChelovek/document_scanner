@@ -30,9 +30,23 @@ cv::Mat pix8ToMat(Pix *pix) {
     return mat;
 }
 
+void drawWords(cv::Mat  &img, std::vector<Word> const &words) {
+    for (auto const &word : words) {
+        cv::rectangle(img, word.rect, {255, 0, 0}, 2);
+    }
+
+    cv::rotate(img, img, cv::ROTATE_90_COUNTERCLOCKWISE);
+
+    for (auto const &word : words) {
+        cv::Point textOrig = {word.rect.y, img.size().height - word.rect.x - word.rect.width / 2 + 5};
+        cv::putText(img, word.text, textOrig, cv::FONT_HERSHEY_COMPLEX, 0.7,
+                    {0, 255, 0}, 1);
+    }
+}
+
 int main(int argc, char *argv[]) {
     auto *api = new tesseract::TessBaseAPI();
-    if (api->Init("/usr/share/tesseract-ocr/5/tessdata", "rus")) {
+    if (api->Init("/usr/share/tesseract-ocr/5/tessdata", "rus+eng")) {
         api->End();
 
         std::cerr << "Cannot initialize tesseract" << std::endl;
@@ -57,7 +71,7 @@ int main(int argc, char *argv[]) {
             int x1, y1, x2, y2;
             ri->BoundingBox(level, &x1, &y1, &x2, &y2);
 
-            words.emplace_back(Word{{x1, y1, x2, y2}, word});
+            words.emplace_back(Word{cv::Rect(cv::Point(x1, y1), cv::Point(x2, y2)), word});
 
             printf("word: '%s';  \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n",
                    word, conf, x1, y1, x2, y2);
@@ -66,11 +80,9 @@ int main(int argc, char *argv[]) {
     }
 
     cv::Mat img = pix8ToMat(pix);
-    cv::rotate(img, img, cv::ROTATE_90_COUNTERCLOCKWISE);
-
+    drawWords(img, words);
     cv::imshow("img", img);
     while (cv::waitKey(0) != 27) {}
-
 
     api->End();
     delete api;
