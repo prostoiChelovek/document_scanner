@@ -6,6 +6,30 @@
 #include <tesseract/baseapi.h>
 #include <leptonica/allheaders.h>
 
+struct Word {
+    cv::Rect rect;
+    std::string text;
+};
+
+cv::Mat pix8ToMat(Pix *pix) {
+    int width = pixGetWidth(pix);
+    int height = pixGetHeight(pix);
+
+    cv::Mat mat(cv::Size(width, height), CV_8UC3);
+
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            l_int32 r, g, b;
+            pixGetRGBPixel(pix, x, y, &r, &g, &b);
+
+            cv::Vec3b color(b, g, r);
+            mat.at<cv::Vec3b>(cv::Point(x, y)) = color;
+        }
+    }
+
+    return mat;
+}
+
 int main(int argc, char *argv[]) {
     auto *api = new tesseract::TessBaseAPI();
     if (api->Init("/usr/share/tesseract-ocr/5/tessdata", "rus")) {
@@ -15,10 +39,11 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
+    std::vector<Word> words;
+
     api->SetPageSegMode(tesseract::PSM_AUTO_OSD);
 
     PIX *pix = pixRead("../data/0/01.png");
-    // PIX *pix = pixRead("../test.png");
     api->SetImage(pix);
 
     api->Recognize(nullptr);
@@ -31,29 +56,21 @@ int main(int argc, char *argv[]) {
             float conf = ri->Confidence(level);
             int x1, y1, x2, y2;
             ri->BoundingBox(level, &x1, &y1, &x2, &y2);
+
+            words.emplace_back(Word{{x1, y1, x2, y2}, word});
+
             printf("word: '%s';  \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n",
                    word, conf, x1, y1, x2, y2);
             delete[] word;
         } while (ri->Next(level));
     }
 
-    tesseract::Orientation orientation;
-    tesseract::WritingDirection direction;
-    tesseract::TextlineOrder order;
-    float deskew_angle;
+    cv::Mat img = pix8ToMat(pix);
+    cv::rotate(img, img, cv::ROTATE_90_COUNTERCLOCKWISE);
 
-    const tesseract::PageIterator *it = api->AnalyseLayout();
-    if (it) {
-        it->Orientation(&orientation, &direction, &order, &deskew_angle);
-        printf(
-                "Orientation: %d\nWritingDirection: %d\nTextlineOrder: %d\n"
-                "Deskew angle: %.4f\n",
-                orientation, direction, order, deskew_angle);
-    } else {
-        return EXIT_FAILURE;
-    }
+    cv::imshow("img", img);
+    while (cv::waitKey(0) != 27) {}
 
-    delete it;
 
     api->End();
     delete api;
