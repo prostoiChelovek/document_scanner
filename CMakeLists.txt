@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 17)
 find_package(OpenCV 4 REQUIRED)
 
 find_package(PkgConfig REQUIRED)
-pkg_search_module(TESSERACT 5 REQUIRED tesseract )
+pkg_search_module(TESSERACT 4 REQUIRED tesseract )
 pkg_search_module(LEPTONICA REQUIRED lept )
 
 include_directories(${TESSERACT_INCLUDE_DIRS})
