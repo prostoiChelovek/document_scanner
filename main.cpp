@@ -6,6 +6,15 @@
 #include <tesseract/baseapi.h>
 #include <leptonica/allheaders.h>
 
+int morphElem = 0;
+int morphSize = 0;
+int operation = cv::MORPH_ERODE;
+int secondOperation = cv::MORPH_OPEN;
+
+int sigma = 100, threshold = 100, amount = 100;
+
+cv::Mat gImg;
+
 struct Word {
     cv::Rect rect;
     std::string text;
@@ -36,9 +45,37 @@ void drawWords(cv::Mat &img, std::vector<Word> const &words, std::vector<Line> c
 void preprocess(cv::Mat &img) {
     cv::cvtColor(img, img, cv::COLOR_BGR2GRAY);
 
-    cv::fastNlMeansDenoising(img, img, 10, 7, 21);
+    if (sigma % 2 != 1) sigma += 1;
+    double _sigma = sigma / 10.0;
+    double _threshold = threshold / 10.0;
+    double _amount = amount / 10.0;
 
-    cv::threshold(img, img, 0, 255, cv::THRESH_BINARY + cv::THRESH_OTSU);
+    // https://stackoverflow.com/a/33971525/9577873
+    cv::Mat blurred;
+    GaussianBlur(img, blurred, cv::Size(), _sigma, _sigma);
+    cv::Mat lowContrastMask = abs(img - blurred) < _threshold;
+    cv::Mat sharpened = img*(1+_amount) + blurred*(-_amount);
+    img.copyTo(sharpened, lowContrastMask);
+    img = sharpened;
+
+    //cv::fastNlMeansDenoising(img, img, 10, 7, 21);
+
+    //cv::threshold(img, img, 150, 255, cv::THRESH_BINARY);
+
+    cv::Mat element = cv::getStructuringElement(morphElem,
+                                                cv::Size(2 * morphSize + 1, 2 * morphSize + 1),
+                                                cv::Point(morphSize, morphSize));
+
+    // cv::morphologyEx(img, img, operation, element);
+    // cv::morphologyEx(img, img, secondOperation, element);
+
+    //cv::rotate(img, img, cv::ROTATE_90_COUNTERCLOCKWISE);
+    //cv::imshow("img", img);
+}
+
+void doStuff(int, void *) {
+    cv::Mat img = gImg.clone();
+    preprocess(img);
 }
 
 int main(int argc, char *argv[]) {
@@ -57,20 +94,41 @@ int main(int argc, char *argv[]) {
 
     for (auto const &var : std::vector<std::string>
             {
-            "textord_tabfind_find_tables",
-            "textord_tablefind_recognize_tables"
+                    "textord_tabfind_find_tables",
+                    "textord_tablefind_recognize_tables"
             }) {
         api->SetVariable(var.c_str(), "true");
     }
 
     cv::Mat img = cv::imread("../data/0/01.png");
     cv::resize(img, img, img.size() * 2);
+    gImg = img;
 
     cv::Mat imgDraw = img.clone();
 
-    preprocess(img);
+    cv::namedWindow("params", cv::WINDOW_AUTOSIZE | cv::WINDOW_GUI_NORMAL);
+    cv::createTrackbar("Element:\n 0: Rect - 1: Cross - 2: Ellipse", "params",
+                       &morphElem, 2, doStuff);
+    cv::createTrackbar("Kernel size:\n 2n +1", "params",
+                   &morphSize, 5, doStuff);
+    cv::createTrackbar("Op:", "params",
+                   &operation, 7, doStuff);
+    cv::createTrackbar("Op2:", "params",
+                   &secondOperation, 7, doStuff);
 
-    api->SetImage((uchar*)img.data, img.size().width, img.size().height, img.channels(), img.step1());
+    cv::createTrackbar("sigma:", "params",
+                   &sigma, 100, doStuff);
+    cv::createTrackbar("threshold:", "params",
+                   &threshold, 100, doStuff);
+    cv::createTrackbar("amount:", "params",
+                   &amount, 100, doStuff);
+
+    preprocess(img);
+    //while (cv::waitKey(0) != 27) {}
+
+    //return EXIT_SUCCESS;
+
+    api->SetImage((uchar *) img.data, img.size().width, img.size().height, img.channels(), img.step1());
     api->SetSourceResolution(300);
 
     api->Recognize(nullptr);
@@ -95,10 +153,7 @@ int main(int argc, char *argv[]) {
                 cv::Point a(rect.x, rect.y + rect.height / 2);
                 cv::Point b(rect.x + rect.width, rect.y + rect.height / 2);
                 lines.emplace_back(Line{a, b});
-            } else if (blockType == PolyBlockType::PT_FLOWING_TEXT
-                        || blockType == PolyBlockType::PT_HEADING_TEXT
-                        || blockType == PolyBlockType::PT_PULLOUT_TEXT
-                        || blockType == PolyBlockType::PT_TABLE) {
+            } else if (PTIsTextType(blockType)) {
                 words.emplace_back(Word{rect, text});
 
                 printf("text: '%s';  \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n",
