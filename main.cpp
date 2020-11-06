@@ -50,9 +50,19 @@ void preprocess(cv::Mat &img) {
     double _threshold = threshold / 10.0;
     double _amount = amount / 10.0;
 
+    cv::imshow("orig", img);
+
+    // make "almost white" pixels white
+    cv::Mat tmpThreshould;
+    cv::threshold(img, tmpThreshould, 200, 255, cv::THRESH_BINARY);
+    cv::erode(tmpThreshould, tmpThreshould,
+               cv::getStructuringElement(cv::MORPH_RECT, cv::Size(25, 25)));
+    img.setTo(255, tmpThreshould);
+
+    // sharpen
     // https://stackoverflow.com/a/33971525/9577873
     cv::Mat blurred;
-    GaussianBlur(img, blurred, cv::Size(), _sigma, _sigma);
+    cv::GaussianBlur(img, blurred, cv::Size(), _sigma, _sigma);
     cv::Mat lowContrastMask = abs(img - blurred) < _threshold;
     cv::Mat sharpened = img*(1+_amount) + blurred*(-_amount);
     img.copyTo(sharpened, lowContrastMask);
@@ -60,22 +70,15 @@ void preprocess(cv::Mat &img) {
 
     //cv::fastNlMeansDenoising(img, img, 10, 7, 21);
 
-    //cv::threshold(img, img, 150, 255, cv::THRESH_BINARY);
-
-    cv::Mat element = cv::getStructuringElement(morphElem,
-                                                cv::Size(2 * morphSize + 1, 2 * morphSize + 1),
-                                                cv::Point(morphSize, morphSize));
-
-    // cv::morphologyEx(img, img, operation, element);
-    // cv::morphologyEx(img, img, secondOperation, element);
-
-    //cv::rotate(img, img, cv::ROTATE_90_COUNTERCLOCKWISE);
-    //cv::imshow("img", img);
+    cv::threshold(img, img, 100, 255, cv::THRESH_BINARY);
 }
 
 void doStuff(int, void *) {
     cv::Mat img = gImg.clone();
     preprocess(img);
+
+    cv::rotate(img, img, cv::ROTATE_90_COUNTERCLOCKWISE);
+    cv::imshow("img", img);
 }
 
 int main(int argc, char *argv[]) {
@@ -103,8 +106,6 @@ int main(int argc, char *argv[]) {
     cv::Mat img = cv::imread("../data/0/01.png");
     cv::resize(img, img, img.size() * 2);
     gImg = img;
-
-    cv::Mat imgDraw = img.clone();
 
     cv::namedWindow("params", cv::WINDOW_AUTOSIZE | cv::WINDOW_GUI_NORMAL);
     cv::createTrackbar("Element:\n 0: Rect - 1: Cross - 2: Ellipse", "params",
@@ -163,6 +164,9 @@ int main(int argc, char *argv[]) {
             delete[] text;
         } while (ri->Next(level));
     }
+
+    cv::Mat imgDraw;
+    cv::cvtColor(img, imgDraw, cv::COLOR_GRAY2BGR);
 
     drawWords(imgDraw, words, lines);
     cv::rotate(img, img, cv::ROTATE_90_COUNTERCLOCKWISE);
