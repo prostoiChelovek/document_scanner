@@ -6,15 +6,6 @@
 #include <tesseract/baseapi.h>
 #include <leptonica/allheaders.h>
 
-int morphElem = 0;
-int morphSize = 0;
-int operation = cv::MORPH_ERODE;
-int secondOperation = cv::MORPH_OPEN;
-
-int sigma = 100, threshold = 100, amount = 100;
-
-cv::Mat gImg;
-
 struct Word {
     cv::Rect rect;
     std::string text;
@@ -23,6 +14,32 @@ struct Word {
 struct Line {
     cv::Point a, b;
 };
+
+cv::Mat pixToMat(Pix *pix) {
+    int width = pixGetWidth(pix);
+    int height = pixGetHeight(pix);
+    int depth = pixGetDepth(pix);
+
+    cv::Mat mat(cv::Size(width, height), depth == 1 ? CV_8UC1 : CV_8UC3);
+
+    for (uint32_t y = 0; y < height; ++y) {
+        for (uint32_t x = 0; x < width; ++x) {
+            if (depth == 1) {
+                l_uint32 val;
+                pixGetPixel(pix, x, y, &val);
+                mat.at<uchar>(cv::Point(x, y)) = static_cast<uchar>(255 * val);
+            } else {
+                l_int32 r, g, b;
+                pixGetRGBPixel(pix, x, y, &r, &g, &b);
+
+                cv::Vec3b color(b, g, r);
+                mat.at<cv::Vec3b>(cv::Point(x, y)) = color;
+            }
+        }
+    }
+
+    return mat;
+}
 
 void drawWords(cv::Mat &img, std::vector<Word> const &words, std::vector<Line> const &lines) {
     for (auto const &word : words) {
@@ -45,13 +62,6 @@ void drawWords(cv::Mat &img, std::vector<Word> const &words, std::vector<Line> c
 void preprocess(cv::Mat &img) {
     cv::cvtColor(img, img, cv::COLOR_BGR2GRAY);
 
-    if (sigma % 2 != 1) sigma += 1;
-    double _sigma = sigma / 10.0;
-    double _threshold = threshold / 10.0;
-    double _amount = amount / 10.0;
-
-    cv::imshow("orig", img);
-
     // make "almost white" pixels white
     cv::Mat tmpThreshould;
     cv::threshold(img, tmpThreshould, 200, 255, cv::THRESH_BINARY);
@@ -61,10 +71,12 @@ void preprocess(cv::Mat &img) {
 
     // sharpen
     // https://stackoverflow.com/a/33971525/9577873
+    double sigma = 11, threshold = 10, amount = 10;
+
     cv::Mat blurred;
-    cv::GaussianBlur(img, blurred, cv::Size(), _sigma, _sigma);
-    cv::Mat lowContrastMask = abs(img - blurred) < _threshold;
-    cv::Mat sharpened = img*(1+_amount) + blurred*(-_amount);
+    cv::GaussianBlur(img, blurred, cv::Size(), sigma, sigma);
+    cv::Mat lowContrastMask = abs(img - blurred) < threshold;
+    cv::Mat sharpened = img*(1 + amount) + blurred * (-amount);
     img.copyTo(sharpened, lowContrastMask);
     img = sharpened;
 
@@ -73,17 +85,10 @@ void preprocess(cv::Mat &img) {
     cv::threshold(img, img, 100, 255, cv::THRESH_BINARY);
 }
 
-void doStuff(int, void *) {
-    cv::Mat img = gImg.clone();
-    preprocess(img);
-
-    cv::rotate(img, img, cv::ROTATE_90_COUNTERCLOCKWISE);
-    cv::imshow("img", img);
-}
-
 int main(int argc, char *argv[]) {
     auto *api = new tesseract::TessBaseAPI();
-    if (api->Init("/usr/share/tesseract-ocr/4.00/tessdata/", "rus+eng")) {
+    // https://github.com/tesseract-ocr/tessdata_best
+    if (api->Init("/usr/share/tesseract-ocr/4.00/tessdata/best", "rus+eng")) {
         api->End();
 
         std::cerr << "Cannot initialize tesseract" << std::endl;
@@ -105,29 +110,8 @@ int main(int argc, char *argv[]) {
 
     cv::Mat img = cv::imread("../data/0/01.png");
     cv::resize(img, img, img.size() * 2);
-    gImg = img;
-
-    cv::namedWindow("params", cv::WINDOW_AUTOSIZE | cv::WINDOW_GUI_NORMAL);
-    cv::createTrackbar("Element:\n 0: Rect - 1: Cross - 2: Ellipse", "params",
-                       &morphElem, 2, doStuff);
-    cv::createTrackbar("Kernel size:\n 2n +1", "params",
-                   &morphSize, 5, doStuff);
-    cv::createTrackbar("Op:", "params",
-                   &operation, 7, doStuff);
-    cv::createTrackbar("Op2:", "params",
-                   &secondOperation, 7, doStuff);
-
-    cv::createTrackbar("sigma:", "params",
-                   &sigma, 100, doStuff);
-    cv::createTrackbar("threshold:", "params",
-                   &threshold, 100, doStuff);
-    cv::createTrackbar("amount:", "params",
-                   &amount, 100, doStuff);
 
     preprocess(img);
-    //while (cv::waitKey(0) != 27) {}
-
-    //return EXIT_SUCCESS;
 
     api->SetImage((uchar *) img.data, img.size().width, img.size().height, img.channels(), img.step1());
     api->SetSourceResolution(300);
@@ -171,8 +155,13 @@ int main(int argc, char *argv[]) {
     drawWords(imgDraw, words, lines);
     cv::rotate(img, img, cv::ROTATE_90_COUNTERCLOCKWISE);
 
+    PIX *m = api->GetThresholdedImage();
+    cv::Mat thresholded = pixToMat(m);
+    cv::rotate(thresholded, thresholded, cv::ROTATE_90_COUNTERCLOCKWISE);
+
     cv::imshow("result", imgDraw);
     cv::imshow("preprocessed", img);
+    cv::imshow("thresholded", thresholded);
     while (cv::waitKey(0) != 27) {}
 
     api->End();
