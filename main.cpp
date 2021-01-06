@@ -12,6 +12,7 @@
 struct Word {
     cv::Rect rect;
     std::string text;
+    float confidence;
 };
 
 struct Line {
@@ -71,7 +72,7 @@ void preprocess(cv::Mat &img) {
     cv::Mat tmpThreshould;
     cv::threshold(img, tmpThreshould, 200, 255, cv::THRESH_BINARY);
     cv::erode(tmpThreshould, tmpThreshould,
-               cv::getStructuringElement(cv::MORPH_RECT, cv::Size(25, 25)));
+               cv::getStructuringElement(cv::MORPH_RECT, cv::Size(15, 15)));
     img.setTo(255, tmpThreshould);
 
     cvv::debugFilter(original, img, CVVISUAL_LOCATION, "whitened");
@@ -146,15 +147,16 @@ int main(int argc, char *argv[]) {
 
             PolyBlockType blockType = ri->BlockType();
             if (blockType == PolyBlockType::PT_HORZ_LINE) {
-                cv::Point a(rect.x + rect.width / 2, rect.y);
-                cv::Point b(rect.x + rect.width / 2, rect.y + rect.height);
+                int rectXCenter = rect.x + rect.width / 2;
+                cv::Point a(rectXCenter, rect.y);
+                cv::Point b(rectXCenter, rect.y + rect.height);
                 lines.emplace_back(Line{a, b});
             } else if (blockType == PolyBlockType::PT_VERT_LINE) {
                 cv::Point a(rect.x, rect.y + rect.height / 2);
                 cv::Point b(rect.x + rect.width, rect.y + rect.height / 2);
                 lines.emplace_back(Line{a, b});
             } else if (PTIsTextType(blockType)) {
-                words.emplace_back(Word{rect, text});
+                words.emplace_back(Word{rect, text, conf});
 
                 printf("text: '%s';  \tconf: %.2f; BoundingBox: %d,%d,%d,%d;\n",
                        text, conf, x1, y1, x2, y2);
