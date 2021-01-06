@@ -3,6 +3,9 @@
 
 #include <opencv2/opencv.hpp>
 
+#define CVVISUAL_DEBUGMODE
+#include <opencv2/cvv.hpp>
+
 #include <tesseract/baseapi.h>
 #include <leptonica/allheaders.h>
 
@@ -60,6 +63,8 @@ void drawWords(cv::Mat &img, std::vector<Word> const &words, std::vector<Line> c
 }
 
 void preprocess(cv::Mat &img) {
+    cv::Mat original = img.clone();
+
     cv::cvtColor(img, img, cv::COLOR_BGR2GRAY);
 
     // make "almost white" pixels white
@@ -68,6 +73,8 @@ void preprocess(cv::Mat &img) {
     cv::erode(tmpThreshould, tmpThreshould,
                cv::getStructuringElement(cv::MORPH_RECT, cv::Size(25, 25)));
     img.setTo(255, tmpThreshould);
+
+    cvv::debugFilter(original, img, CVVISUAL_LOCATION, "whitened");
 
     // sharpen
     // https://stackoverflow.com/a/33971525/9577873
@@ -78,11 +85,17 @@ void preprocess(cv::Mat &img) {
     cv::Mat lowContrastMask = abs(img - blurred) < threshold;
     cv::Mat sharpened = img*(1 + amount) + blurred * (-amount);
     img.copyTo(sharpened, lowContrastMask);
+
+    cvv::debugFilter(img, sharpened, CVVISUAL_LOCATION, "sharpened");
+
     img = sharpened;
 
-    //cv::fastNlMeansDenoising(img, img, 10, 7, 21);
+    // cv::fastNlMeansDenoising(img, img, 10, 7, 21);
+    // cvv::debugFilter(sharpened, img, CVVISUAL_LOCATION, "denoised");
 
+    original = img.clone();
     cv::threshold(img, img, 100, 255, cv::THRESH_BINARY);
+    cvv::debugFilter(original, img, CVVISUAL_LOCATION, "thresholded");
 }
 
 int main(int argc, char *argv[]) {
@@ -110,12 +123,14 @@ int main(int argc, char *argv[]) {
 
     cv::Mat img = cv::imread("../data/0/01.png");
     cv::resize(img, img, img.size() * 2);
+    cv::Mat original = img.clone();
 
     preprocess(img);
 
     api->SetImage((uchar *) img.data, img.size().width, img.size().height, img.channels(), img.step1());
     api->SetSourceResolution(300);
 
+    std::cout << "Performing OCR..." << std::endl;
     api->Recognize(nullptr);
 
     tesseract::ResultIterator *ri = api->GetIterator();
@@ -160,9 +175,11 @@ int main(int argc, char *argv[]) {
     cv::rotate(thresholded, thresholded, cv::ROTATE_90_COUNTERCLOCKWISE);
 
     cv::imshow("result", imgDraw);
-    cv::imshow("preprocessed", img);
-    cv::imshow("thresholded", thresholded);
     while (cv::waitKey(0) != 27) {}
+
+    cvv::debugFilter(original, img, CVVISUAL_LOCATION, "preprocessed");
+    cvv::debugFilter(img, thresholded, CVVISUAL_LOCATION, "thresholded");
+    cvv::finalShow();
 
     api->End();
     delete api;
