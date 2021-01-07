@@ -9,6 +9,16 @@
 #include <tesseract/baseapi.h>
 #include <leptonica/allheaders.h>
 
+#ifdef CVVISUAL_DEBUGMODE
+/**
+ * Helper macro, which calls CVV's debugFilter, and clones `img` to `original`
+ */
+#define DebugFilter(name) cvv::debugFilter(original, img, CVVISUAL_LOCATION, name); \
+                          original = img.clone();
+#else
+#define DebugFilter(name)
+#endif
+
 struct Word {
     cv::Rect rect;
     std::string text;
@@ -63,40 +73,47 @@ void drawWords(cv::Mat &img, std::vector<Word> const &words, std::vector<Line> c
     }
 }
 
-void preprocess(cv::Mat &img) {
-    cv::Mat original = img.clone();
-
-    cv::cvtColor(img, img, cv::COLOR_BGR2GRAY);
-
-    // make "almost white" pixels white
+/**
+ *  make "almost white" pixels white
+ */
+void whiten(cv::Mat &img) {
     cv::Mat tmpThreshould;
     cv::threshold(img, tmpThreshould, 200, 255, cv::THRESH_BINARY);
     cv::erode(tmpThreshould, tmpThreshould,
-               cv::getStructuringElement(cv::MORPH_RECT, cv::Size(15, 15)));
+              cv::getStructuringElement(cv::MORPH_RECT, cv::Size(15, 15)));
     img.setTo(255, tmpThreshould);
+}
 
-    cvv::debugFilter(original, img, CVVISUAL_LOCATION, "whitened");
-
-    // sharpen
-    // https://stackoverflow.com/a/33971525/9577873
-    double sigma = 11, threshold = 10, amount = 10;
-
+/**
+ * @see https://stackoverflow.com/a/33971525/9577873
+ */
+void sharpen(cv::Mat &img, double sigma, double threshold, double amount) {
     cv::Mat blurred;
     cv::GaussianBlur(img, blurred, cv::Size(), sigma, sigma);
     cv::Mat lowContrastMask = abs(img - blurred) < threshold;
     cv::Mat sharpened = img*(1 + amount) + blurred * (-amount);
     img.copyTo(sharpened, lowContrastMask);
 
-    cvv::debugFilter(img, sharpened, CVVISUAL_LOCATION, "sharpened");
-
     img = sharpened;
+}
+
+void preprocess(cv::Mat &img) {
+    cv::Mat original = img.clone();
+
+    cv::cvtColor(img, img, cv::COLOR_BGR2GRAY);
+
+    whiten(img);
+    DebugFilter("whitened")
+
+    double sigma = 11, threshold = 10, amount = 10;
+    sharpen(img, sigma, threshold, amount);
+    DebugFilter("sharpened")
 
     // cv::fastNlMeansDenoising(img, img, 10, 7, 21);
-    // cvv::debugFilter(sharpened, img, CVVISUAL_LOCATION, "denoised");
+    // DebugFilter("denoised")
 
-    original = img.clone();
     cv::threshold(img, img, 100, 255, cv::THRESH_BINARY);
-    cvv::debugFilter(original, img, CVVISUAL_LOCATION, "thresholded");
+    DebugFilter("thresholded");
 }
 
 int main(int argc, char *argv[]) {
