@@ -1,5 +1,6 @@
-#include <iostream>
 #include <cstdio>
+#include <iostream>
+#include <numeric>
 
 #include <opencv2/opencv.hpp>
 
@@ -73,6 +74,55 @@ void drawWords(cv::Mat &img, std::vector<Word> const &words, std::vector<Line> c
     }
 }
 
+void removeSmallObjects(cv::Mat &img) {
+    std::vector<std::vector<cv::Point>> contours;
+    std::vector<cv::Vec4i> hierarchy;
+    cv::findContours(img, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
+
+    std::vector<double> areas;
+    std::transform(contours.begin(), contours.end(), std::back_inserter(areas),
+                   [](std::vector<cv::Point> &c) -> double { return cv::contourArea(c); });
+
+    std::vector<double> areasSorted = areas;
+    std::sort(areasSorted.begin(), areasSorted.end());
+
+    double areaThreshould = 0;
+    if (areasSorted.size() >= 2) {
+        areaThreshould = std::accumulate(areasSorted.end() - 3, areasSorted.end() - 1, 0) / 2;
+    }
+
+    for (int i = 0; i < contours.size(); ++i) {
+        // if area is less than threshould and doesn't have a parent
+        if (areas[i] < areaThreshould && hierarchy[i][3] == -1) {
+            cv::Rect contourRect = cv::boundingRect(contours[i]);
+            cv::rectangle(img, contourRect, {0}, cv::FILLED);
+        }
+    }
+}
+
+void removePen(cv::Mat &img, cv::Mat const &gray) {
+    cv::Mat grayBgr;
+    cv::cvtColor(gray, grayBgr, cv::COLOR_GRAY2BGR);
+
+    cv::Mat nonGray = img - grayBgr;
+    cv::transform(nonGray, nonGray, cv::Matx13f::all(1)); // sum channels
+
+    cv::Mat nonGrayMask = nonGray > 10;
+
+    cvv::debugFilter(gray, nonGray, CVVISUAL_LOCATION, "non-gray");
+
+    cv::Mat closingKernel = cv::getStructuringElement(cv::MORPH_RECT, {10, 10});
+    cv::dilate(nonGrayMask, nonGrayMask, closingKernel);
+    cv::morphologyEx(nonGrayMask, nonGrayMask, cv::MORPH_CLOSE, closingKernel, {-1, -1}, 2);
+
+    cvv::debugFilter(nonGrayMask, nonGrayMask, CVVISUAL_LOCATION, "non-gray mask");
+
+    removeSmallObjects(nonGrayMask);
+
+    img = gray;
+    img.setTo(255, nonGrayMask);
+}
+
 /**
  *  make "almost white" pixels white
  */
@@ -91,7 +141,7 @@ void sharpen(cv::Mat &img, double sigma, double threshold, double amount) {
     cv::Mat blurred;
     cv::GaussianBlur(img, blurred, cv::Size(), sigma, sigma);
     cv::Mat lowContrastMask = abs(img - blurred) < threshold;
-    cv::Mat sharpened = img*(1 + amount) + blurred * (-amount);
+    cv::Mat sharpened = img * (1 + amount) + blurred * (-amount);
     img.copyTo(sharpened, lowContrastMask);
 
     img = sharpened;
@@ -100,7 +150,11 @@ void sharpen(cv::Mat &img, double sigma, double threshold, double amount) {
 void preprocess(cv::Mat &img) {
     cv::Mat original = img.clone();
 
-    cv::cvtColor(img, img, cv::COLOR_BGR2GRAY);
+    cv::Mat gray;
+    cv::cvtColor(img, gray, cv::COLOR_BGR2GRAY);
+
+    removePen(img, gray);
+    DebugFilter("pen removed")
 
     whiten(img);
     DebugFilter("whitened")
