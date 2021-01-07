@@ -123,12 +123,25 @@ void removePen(cv::Mat &img, cv::Mat const &gray) {
 
     auto contoursToRemove = removeSmallObjects(nonGrayMask);
 
+    cv::Mat blackMask;
+    cv::inRange(img, cv::Scalar::all(0), cv::Scalar::all(100), blackMask);
+    cv::Mat blackMaskMasked = cv::Mat::zeros(blackMask.size(), blackMask.type());
+
     img = gray;
 
     for (auto const &cnt : contoursToRemove) {
         cv::Rect contourRect = cv::boundingRect(cnt);
+
         cv::rectangle(img, contourRect, {255}, cv::FILLED);
+
+        cv::Mat tmp = cv::Mat::zeros(blackMaskMasked.size(), blackMaskMasked.type());
+        cv::rectangle(tmp, contourRect, {255}, cv::FILLED);
+        blackMaskMasked |= blackMask & tmp;
     }
+
+    cvv::showImage(blackMaskMasked, CVVISUAL_LOCATION, "restoration mask");
+
+    img.setTo(0, blackMask); // try to restore lines, that were accidentally hidden
 }
 
 /**
