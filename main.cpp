@@ -74,7 +74,7 @@ void drawWords(cv::Mat &img, std::vector<Word> const &words, std::vector<Line> c
     }
 }
 
-void removeSmallObjects(cv::Mat &img) {
+std::vector<std::vector<cv::Point>> removeSmallObjects(cv::Mat &img) {
     std::vector<std::vector<cv::Point>> contours;
     std::vector<cv::Vec4i> hierarchy;
     cv::findContours(img, contours, hierarchy, cv::RETR_TREE, cv::CHAIN_APPROX_SIMPLE);
@@ -91,13 +91,17 @@ void removeSmallObjects(cv::Mat &img) {
         areaThreshould = std::accumulate(areasSorted.end() - 3, areasSorted.end() - 1, 0) / 2;
     }
 
-    for (int i = 0; i < contours.size(); ++i) {
-        // if area is less than threshould and doesn't have a parent
+    for (int i = contours.size() - 1; i >= 0; --i) { // iterating in reverse to avoid problems with erasing
+        // if area is less than threshould and contour doesn't have a parent
         if (areas[i] < areaThreshould && hierarchy[i][3] == -1) {
             cv::Rect contourRect = cv::boundingRect(contours[i]);
             cv::rectangle(img, contourRect, {0}, cv::FILLED);
+
+            contours.erase(contours.begin() + i);
         }
     }
+
+    return contours;
 }
 
 void removePen(cv::Mat &img, cv::Mat const &gray) {
@@ -117,10 +121,14 @@ void removePen(cv::Mat &img, cv::Mat const &gray) {
 
     cvv::debugFilter(nonGrayMask, nonGrayMask, CVVISUAL_LOCATION, "non-gray mask");
 
-    removeSmallObjects(nonGrayMask);
+    auto contoursToRemove = removeSmallObjects(nonGrayMask);
 
     img = gray;
-    img.setTo(255, nonGrayMask);
+
+    for (auto const &cnt : contoursToRemove) {
+        cv::Rect contourRect = cv::boundingRect(cnt);
+        cv::rectangle(img, contourRect, {255}, cv::FILLED);
+    }
 }
 
 /**
