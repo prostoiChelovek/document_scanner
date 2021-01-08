@@ -15,7 +15,7 @@ include_directories(${LEPTONICA_INCLUDE_DIRS} )
 link_directories(${TESSERACT_LIBRARY_DIRS} )
 link_directories(${LEPTONICA_LIBRARY_DIRS} )
 
-add_executable(document_scanner main.cpp utils.h utils.cpp)
+add_executable(document_scanner main.cpp utils.h utils.cpp preprocessing.h preprocessing.cpp)
 
 target_link_libraries(document_scanner ${TESSERACT_LIBRARIES})
 target_link_libraries(document_scanner ${LEPTONICA_LIBRARIES} )
