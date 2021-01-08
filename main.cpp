@@ -3,7 +3,6 @@
 
 #include <opencv2/opencv.hpp>
 
-#define CVVISUAL_DEBUGMODE
 #include <opencv2/cvv.hpp>
 
 #include <tesseract/baseapi.h>
