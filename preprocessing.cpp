@@ -35,16 +35,25 @@ void removePen(cv::Mat &img, cv::Mat const &gray) {
     for (auto const &cnt : contoursToRemove) {
         cv::Rect contourRect = cv::boundingRect(cnt);
 
+        // try to hide the most of remains of signature's underline, so it won't confuse tesseract
+        contourRect.y -= 60;
+        contourRect.height += 60;
+
         cv::rectangle(img, contourRect, {255}, cv::FILLED);
 
         cv::Mat tmp = cv::Mat::zeros(blackMaskMasked.size(), blackMaskMasked.type());
+
+        // we only care about a line of a table, which is in the rightmost part (image is rotated)
+        contourRect.x += contourRect.width / 3 * 2;
+        contourRect.width /= 3;
+
         cv::rectangle(tmp, contourRect, {255}, cv::FILLED);
         blackMaskMasked |= blackMask & tmp;
     }
 
     cvv::showImage(blackMaskMasked, CVVISUAL_LOCATION, "restoration mask");
 
-    img.setTo(0, blackMask); // try to restore lines, that were accidentally hidden
+    img.setTo(0, blackMaskMasked); // try to restore lines, that were accidentally hidden
 }
 
 /**
